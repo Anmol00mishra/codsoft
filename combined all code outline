@@ -1,0 +1,127 @@
+# =======================================
+# CODSOFT Data Science Internship Projects
+# =======================================
+
+# Common imports
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, LabelEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import (accuracy_score, f1_score, precision_score,
+                             recall_score, roc_auc_score,
+                             classification_report, confusion_matrix)
+
+# -------------------------------
+# Task 1 – Titanic Survival Prediction
+# -------------------------------
+print("=== Task 1: Titanic Survival Prediction ===")
+
+df = pd.read_csv("train.csv")
+
+# Handle missing
+df['Age'] = df['Age'].fillna(df['Age'].median())
+df['Embarked'] = df['Embarked'].fillna(df['Embarked'].mode()[0])
+df['Cabin'] = df['Cabin'].fillna("Unknown")
+
+# Feature engineering
+df['FamilySize'] = df['SibSp'] + df['Parch'] + 1
+df['IsAlone'] = (df['FamilySize'] == 1).astype(int)
+df['Title'] = df['Name'].str.extract(r',\s*([^\.]+)\.', expand=False).str.strip()
+rare_titles = df['Title'].value_counts()[df['Title'].value_counts()<10].index
+df['Title'] = df['Title'].replace(rare_titles, 'Rare')
+
+num_feats = ['Age','SibSp','Parch','Fare','FamilySize']
+cat_feats = ['Pclass','Sex','Embarked','Title','IsAlone']
+X, y = df[num_feats + cat_feats], df['Survived']
+
+num_pipe = Pipeline([("impute", SimpleImputer(strategy="median")),
+                     ("scale", StandardScaler())])
+cat_pipe = Pipeline([("impute", SimpleImputer(strategy="most_frequent")),
+                     ("ohe", OneHotEncoder(handle_unknown="ignore"))])
+pre = ColumnTransformer([("num", num_pipe, num_feats),
+                         ("cat", cat_pipe, cat_feats)])
+
+X_train,X_test,y_train,y_test = train_test_split(X,y,test_size=0.2,
+                                                 stratify=y,random_state=42)
+
+models = {
+    "Logistic Regression": LogisticRegression(max_iter=1000),
+    "Random Forest": RandomForestClassifier(n_estimators=300,random_state=42)
+}
+
+for name, clf in models.items():
+    pipe = Pipeline([("pre", pre), ("clf", clf)])
+    pipe.fit(X_train, y_train)
+    preds = pipe.predict(X_test)
+    proba = pipe.predict_proba(X_test)[:,1]
+    print(f"\n{name}")
+    print("Accuracy:", round(accuracy_score(y_test, preds), 3))
+    print("ROC-AUC:", round(roc_auc_score(y_test, proba), 3))
+    print("Report:\n", classification_report(y_test, preds))
+
+# -------------------------------
+# Task 2 – Iris Flower Classification
+# -------------------------------
+print("\n=== Task 2: Iris Flower Classification ===")
+
+iris_df = pd.read_csv("IRIS.csv")
+X = iris_df.drop("species", axis=1)
+y = iris_df["species"]
+
+le = LabelEncoder()
+y = le.fit_transform(y)
+target_names = le.classes_
+
+X_train,X_test,y_train,y_test = train_test_split(X,y,test_size=0.2,
+                                                 stratify=y,random_state=42)
+
+svc_clf = Pipeline([("scaler", StandardScaler()),
+                    ("svc", SVC(kernel="rbf", probability=True, random_state=42))])
+knn_clf = Pipeline([("scaler", StandardScaler()),
+                    ("knn", KNeighborsClassifier(n_neighbors=7))])
+
+for name, model in [("SVC (RBF)", svc_clf), ("KNN (k=7)", knn_clf)]:
+    model.fit(X_train,y_train)
+    preds = model.predict(X_test)
+    print(f"\n{name}")
+    print("Accuracy:", round(accuracy_score(y_test, preds), 3))
+    print("Macro F1:", round(f1_score(y_test, preds, average="macro"), 3))
+    print("Confusion Matrix:\n", confusion_matrix(y_test, preds))
+    print("Report:\n", classification_report(y_test, preds, target_names=target_names))
+
+# -------------------------------
+# Task 3 – Credit Card Fraud Detection
+# -------------------------------
+print("\n=== Task 3: Credit Card Fraud Detection ===")
+
+fraud_df = pd.read_csv("creditcard.csv")
+X, y = fraud_df.drop("Class", axis=1), fraud_df["Class"]
+
+X_train,X_test,y_train,y_test = train_test_split(X,y,test_size=0.2,
+                                                 stratify=y,random_state=42)
+
+log_clf = Pipeline([("scaler", StandardScaler()),
+                    ("clf", LogisticRegression(max_iter=2000,
+                                               class_weight="balanced",
+                                               random_state=42))])
+rf_clf = RandomForestClassifier(n_estimators=300,
+                                class_weight="balanced_subsample",
+                                random_state=42)
+
+for name, model in [("Logistic Regression", log_clf), ("Random Forest", rf_clf)]:
+    model.fit(X_train, y_train)
+    proba = model.predict_proba(X_test)[:,1]
+    preds = (proba >= 0.5).astype(int)
+    print(f"\n{name}")
+    print("Precision:", round(precision_score(y_test, preds), 3))
+    print("Recall:", round(recall_score(y_test, preds), 3))
+    print("F1 Score:", round(f1_score(y_test, preds), 3))
+    print("ROC-AUC:", round(roc_auc_score(y_test, proba), 3))
+    print("Report:\n", classification_report(y_test, preds))
